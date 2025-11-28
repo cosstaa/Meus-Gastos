@@ -25,7 +25,7 @@
         }
         .container { max-width: 500px; margin: 0 auto; background: white; border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; }
         .header { background: var(--primary); color: white; padding: 20px; text-align: center; }
-        .summary { background: var(--warning); padding: 20px; text-align: center; }
+        .summary { background: var(--warning); padding: 16px 20px; text-align: center; }
         .summary h2 { font-size: 2em; margin-bottom: 5px; }
         .date-filters { background: #f8fafc; padding: 20px; display: flex; gap: 10px; flex-wrap: wrap; }
         .date-picker { flex: 1; min-width: 140px; }
@@ -53,13 +53,15 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>💰 Gastos Tracker V2</h1>
+            <h1>💰 Gastos Tracker V3</h1>
         </div>
 
         <div class="summary">
             <div>Período: <span id="period-display">Últimos 30 dias</span></div>
             <h2 id="total-amount">R$ 0,00</h2>
             <div id="transaction-count">0 transações</div>
+            <div id="salary-info" style="margin-top:6px; font-size:0.9em;"></div>
+            <div id="balance-info" style="margin-top:4px; font-weight:600;"></div>
         </div>
 
         <div class="date-filters">
@@ -156,14 +158,10 @@
     <!-- Modal Salário -->
     <div id="salary-modal" class="modal" style="display: none;">
         <div class="modal-content">
-            <h2>💼 Novo Salário</h2>
-            <div class="form-group">
-                <label>Data</label>
-                <input type="date" id="salary-date" required>
-            </div>
+            <h2>💼 Salário Base Mensal</h2>
             <div class="form-group">
                 <label>Descrição</label>
-                <input type="text" id="salary-desc" placeholder="Salário empresa X" required>
+                <input type="text" id="salary-desc" placeholder="Salário empresa X">
             </div>
             <div class="form-group">
                 <label>Valor (R$)</label>
@@ -179,6 +177,7 @@
     <script>
         let expenses = JSON.parse(localStorage.getItem('expenses')) || [];
         let salaries = JSON.parse(localStorage.getItem('salaries')) || [];
+        let baseSalary = parseFloat(localStorage.getItem('baseSalary') || '0');
         let startDate = new Date();
         startDate.setDate(startDate.getDate() - 30);
         let endDate = new Date();
@@ -244,6 +243,7 @@
                             <div class="expense-amount">R$ ${exp.amount.toFixed(2).replace('.', ',')}</div>
                             <div style="font-size: 0.8em; color: #6b7280;">${exp.paymentMethod}</div>
                             <div style="font-size: 0.7em; color: #9ca3af;">${new Date(exp.date).toLocaleDateString('pt-BR')}</div>
+                            <button onclick="deleteExpense(${exp.id})" style="margin-top:6px; padding:4px 8px; font-size:11px; border-radius:6px; border:none; background:#ef4444; color:white;">Excluir</button>
                         </div>
                     </div>
                 `).join('');
@@ -253,27 +253,39 @@
             totalEl.textContent = `R$ ${total.toFixed(2).replace('.', ',')}`;
             countEl.textContent = `${filteredExpenses.length} transação${filteredExpenses.length !== 1 ? 'ões' : ''}`;
 
+            const salaryInfoEl = document.getElementById('salary-info');
+            const balanceInfoEl = document.getElementById('balance-info');
+
+            if (baseSalary) {
+                const saldo = baseSalary - total;
+                salaryInfoEl.textContent = `Salário do período: R$ ${baseSalary.toFixed(2).replace('.', ',')}`;
+                balanceInfoEl.textContent = `Saldo disponível: R$ ${saldo.toFixed(2).replace('.', ',')}`;
+                balanceInfoEl.style.color = saldo >= 0 ? '#16a34a' : '#ef4444';
+            } else {
+                salaryInfoEl.textContent = 'Cadastre seu salário para ver o saldo.';
+                balanceInfoEl.textContent = '';
+            }
+
             updateCharts(filteredExpenses);
         }
 
         function renderSalaries() {
             const list = document.getElementById('salaries-list');
-            if (salaries.length === 0) {
+            if (!baseSalary) {
                 list.innerHTML = '<div style="padding: 40px; text-align: center; color: #6b7280;">Nenhum salário cadastrado<br>Adicione seu salário!</div>';
                 return;
             }
-            list.innerHTML = salaries.map(s => `
+            list.innerHTML = `
                 <div class="expense-item">
                     <div class="expense-info">
                         <div class="expense-category">Salário</div>
-                        <div class="expense-desc">${s.description}</div>
+                        <div class="expense-desc">Salário base mensal</div>
                     </div>
                     <div style="text-align: right;">
-                        <div class="expense-amount" style="color:#10b981;">R$ ${s.amount.toFixed(2).replace('.', ',')}</div>
-                        <div style="font-size:0.7em; color:#9ca3af;">${new Date(s.date).toLocaleDateString('pt-BR')}</div>
+                        <div class="expense-amount" style="color:#10b981;">R$ ${baseSalary.toFixed(2).replace('.', ',')}</div>
                     </div>
                 </div>
-            `).join('');
+            `;
         }
 
         function filterExpenses() {
@@ -302,7 +314,7 @@
 
         function showSalaryModal() {
             document.getElementById('salary-modal').style.display = 'flex';
-            document.getElementById('salary-date').value = new Date().toISOString().split('T')[0];
+            document.getElementById('salary-amount').value = baseSalary ? baseSalary : '';
         }
 
         function hideSalaryModal() {
@@ -358,22 +370,31 @@
         }
 
         function saveSalary() {
-            const date = document.getElementById('salary-date').value;
-            const description = document.getElementById('salary-desc').value;
             const amount = parseFloat(document.getElementById('salary-amount').value);
+            const description = document.getElementById('salary-desc').value || 'Salário base';
 
-            if (!date || !description || !amount) return;
+            if (!amount) return;
 
-            const salary = {
+            baseSalary = amount;
+            localStorage.setItem('baseSalary', String(baseSalary));
+
+            salaries = [{
                 id: Date.now(),
-                date,
+                date: new Date().toISOString().split('T')[0],
                 description,
-                amount
-            };
-            salaries.unshift(salary);
+                amount: baseSalary
+            }];
             saveSalaries();
             renderSalaries();
             hideSalaryModal();
+            filterExpenses();
+        }
+
+        function deleteExpense(id) {
+            if (!confirm('Excluir este gasto?')) return;
+            expenses = expenses.filter(e => e.id !== id);
+            saveExpenses();
+            filterExpenses();
         }
 
         function groupByCategory(expensesArr) {
@@ -482,4 +503,3 @@
     </script>
 </body>
 </html>
-
